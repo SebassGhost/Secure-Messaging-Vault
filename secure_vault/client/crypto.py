@@ -64,10 +64,31 @@ def sign_hash(hash_hex: str) -> bytes:
     return private_key.sign(hash_hex.encode())
 
 
-def verify_signature(hash_hex: str, signature: bytes, public_key: Ed25519PublicKey) -> bool:
+def verify_signature(
+    hash_hex: str,
+    signature: bytes,
+    public_key: Ed25519PublicKey
+) -> bool:
     try:
         public_key.verify(signature, hash_hex.encode())
         return True
     except Exception:
         return False
 
+
+# =========================
+# High-level operation
+# =========================
+def encrypt_and_sign(plaintext: bytes) -> dict:
+    encrypted = encrypt_message(plaintext)
+
+    content_hash = calculate_hash(encrypted["ciphertext"])
+    signature = sign_hash(content_hash)
+
+    return {
+        "ciphertext": encrypted["ciphertext"],
+        "nonce": encrypted["nonce"],
+        "key": encrypted["key"],
+        "content_hash": content_hash,
+        "signature": signature
+    }
