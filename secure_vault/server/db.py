@@ -39,10 +39,6 @@ def get_connection():
 # ============================================================
 
 def create_user(public_key: str, fingerprint: bytes) -> str:
-    """
-    Registra una identidad criptográfica.
-    Retorna user_id.
-    """
     query = """
         INSERT INTO users (public_key, fingerprint)
         VALUES (%s, %s)
@@ -51,7 +47,7 @@ def create_user(public_key: str, fingerprint: bytes) -> str:
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, (public_key, fingerprint))
+            cur.execute(query, (public_key, psycopg2.Binary(fingerprint)))
             return cur.fetchone()[0]
 
 
@@ -64,7 +60,7 @@ def get_user_by_fingerprint(fingerprint: bytes):
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, (fingerprint,))
+            cur.execute(query, (psycopg2.Binary(fingerprint),))
             return cur.fetchone()
 
 
@@ -108,9 +104,6 @@ def insert_message(
     signature: bytes,
     prev_hash: bytes | None = None
 ):
-    """
-    Inserta un mensaje cifrado (append-only).
-    """
     query = """
         INSERT INTO messages (
             conversation_id,
@@ -139,10 +132,6 @@ def insert_message(
 
 
 def get_messages(conversation_id: str):
-    """
-    Recupera mensajes de una conversación.
-    La verificación criptográfica se hace en el cliente.
-    """
     query = """
         SELECT
             message_id,
