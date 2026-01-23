@@ -95,21 +95,16 @@ def verify_signature(
 # ============================================================
 
 def encrypt_and_sign(plaintext: bytes) -> dict:
-    """
-    Operación atómica:
-    - cifra
-    - hashea el ciphertext
-    - firma el hash
-    """
-    ciphertext, nonce, key = encrypt_message(plaintext)
+    encrypted = encrypt_message(plaintext)
 
-    content_hash = calculate_hash(ciphertext)
+    content_hash = calculate_hash(encrypted["ciphertext"])
     signature = sign_hash(content_hash)
 
     return {
-        "ciphertext": ciphertext,
-        "nonce": nonce,
-        "key": key,
+        "ciphertext": encrypted["ciphertext"],
+        "nonce": encrypted["nonce"],
+        "aes_key": encrypted["key"],   # nombre explícito
         "content_hash": content_hash,
-        "signature": signature
+        "signature": signature,
     }
+
