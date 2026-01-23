@@ -40,12 +40,9 @@ def load_public_key() -> Ed25519PublicKey:
 # AES-GCM ENCRYPTION
 # ============================================================
 
-def encrypt_message(plaintext: bytes) -> tuple[bytes, bytes, bytes]:
+def encrypt_message(plaintext: bytes) -> dict:
     """
-    Retorna:
-    - ciphertext
-    - nonce
-    - symmetric key
+    Retorna un dict explícito (contrato estable)
     """
     key = AESGCM.generate_key(bit_length=256)
     nonce = os.urandom(12)
@@ -53,7 +50,11 @@ def encrypt_message(plaintext: bytes) -> tuple[bytes, bytes, bytes]:
     aesgcm = AESGCM(key)
     ciphertext = aesgcm.encrypt(nonce, plaintext, None)
 
-    return ciphertext, nonce, key
+    return {
+        "ciphertext": ciphertext,
+        "nonce": nonce,
+        "key": key,
+    }
 
 
 def decrypt_message(ciphertext: bytes, nonce: bytes, key: bytes) -> bytes:
@@ -68,7 +69,7 @@ def decrypt_message(ciphertext: bytes, nonce: bytes, key: bytes) -> bytes:
 def calculate_hash(data: bytes) -> bytes:
     """
     Hash binario (NO hex string).
-    Mejor para firmas y DB.
+    Ideal para firmas y DB.
     """
     return hashlib.sha256(data).digest()
 
@@ -103,8 +104,7 @@ def encrypt_and_sign(plaintext: bytes) -> dict:
     return {
         "ciphertext": encrypted["ciphertext"],
         "nonce": encrypted["nonce"],
-        "aes_key": encrypted["key"],   # nombre explícito
+        "key": encrypted["key"],          # clave AES real
         "content_hash": content_hash,
         "signature": signature,
     }
-
