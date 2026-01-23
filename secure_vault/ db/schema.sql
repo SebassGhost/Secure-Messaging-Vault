@@ -11,10 +11,14 @@
 
 
 -- ------------------------------------------------------------
--- Extensión para generación de UUIDs
--- Se usan UUIDs para evitar IDs predecibles
+-- Extensiones necesarias
 -- ------------------------------------------------------------
+
+-- UUIDs no predecibles
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Utilidades criptográficas (hashing binario, etc.)
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 
 -- ============================================================
@@ -24,12 +28,14 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE users (
 
     -- Identificador lógico del usuario
-    -- No representa identidad real, solo una entidad criptográfica
     user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
-    -- Clave pública del usuario (PEM/Base64)
-    -- Usada por otros clientes para verificar firmas
+    -- Clave pública del usuario (PEM / Base64)
     public_key TEXT NOT NULL,
+
+    -- Fingerprint de la clave pública
+    -- hash(public_key) generado en el cliente
+    fingerprint BYTEA NOT NULL UNIQUE,
 
     -- Momento de creación de la identidad
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -52,6 +58,32 @@ CREATE TABLE conversations (
 
 
 -- ============================================================
+-- CONVERSATION PARTICIPANTS
+-- Quién pertenece a cada conversación
+-- La DB NO decide confianza, solo registra
+-- ============================================================
+CREATE TABLE conversation_participants (
+
+    conversation_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+
+    joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (conversation_id, user_id),
+
+    CONSTRAINT fk_cp_conversation
+        FOREIGN KEY (conversation_id)
+        REFERENCES conversations(conversation_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_cp_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE
+);
+
+
+-- ============================================================
 -- MESSAGES
 -- Núcleo del sistema
 -- Cada fila es INMUTABLE (append-only)
@@ -61,47 +93,43 @@ CREATE TABLE messages (
     -- Identificador único del mensaje
     message_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
-    -- Canal al que pertenece el mensaje
+    -- Conversación a la que pertenece
     conversation_id UUID NOT NULL,
 
     -- Usuario emisor (identidad criptográfica)
     sender_id UUID NOT NULL,
 
     -- Mensaje cifrado (E2EE)
-    -- La base de datos NO puede interpretarlo
     ciphertext BYTEA NOT NULL,
 
-    -- Hash criptográfico del contenido del mensaje
-    -- Calculado en el cliente
-    -- Incluye: ciphertext + metadatos relevantes
-    content_hash TEXT NOT NULL,
+    -- Hash criptográfico del mensaje
+    -- Calculado en el cliente sobre:
+    -- ciphertext + metadata relevante
+    content_hash BYTEA NOT NULL,
 
     -- Hash del mensaje anterior en la conversación
-    -- Permite:
-    -- - detección de eliminación
-    -- - detección de reordenamiento
-    -- - integridad temporal
-    prev_hash TEXT,
+    -- Permite detectar:
+    -- - eliminación
+    -- - reordenamiento
+    -- - manipulación
+    prev_hash BYTEA,
 
     -- Firma digital del content_hash
-    -- Prueba:
+    -- Garantiza:
     -- - autoría
     -- - integridad
     -- - no repudio
-    signature TEXT NOT NULL,
+    signature BYTEA NOT NULL,
 
-    -- Fecha de inserción del mensaje
-    -- Usada solo como referencia temporal
+    -- Fecha de inserción (solo referencia temporal)
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    -- Relación con la conversación
-    CONSTRAINT fk_conversation
+    CONSTRAINT fk_message_conversation
         FOREIGN KEY (conversation_id)
         REFERENCES conversations(conversation_id)
         ON DELETE RESTRICT,
 
-    -- Relación con el usuario emisor
-    CONSTRAINT fk_sender
+    CONSTRAINT fk_message_sender
         FOREIGN KEY (sender_id)
         REFERENCES users(user_id)
         ON DELETE RESTRICT
@@ -110,16 +138,24 @@ CREATE TABLE messages (
 
 -- ============================================================
 -- ÍNDICES
--- Optimizan consultas sin comprometer seguridad
+-- Performance sin comprometer seguridad
 -- ============================================================
 
--- Búsqueda rápida de mensajes por conversación
+-- Mensajes por conversación
 CREATE INDEX idx_messages_conversation
     ON messages(conversation_id);
 
--- Orden cronológico eficiente
+-- Mensajes ordenados cronológicamente
 CREATE INDEX idx_messages_created_at
     ON messages(created_at);
+
+-- Conversación + tiempo (lectura eficiente)
+CREATE INDEX idx_messages_conversation_created
+    ON messages(conversation_id, created_at);
+
+-- Auditoría local por emisor
+CREATE INDEX idx_messages_sender
+    ON messages(sender_id);
 
 
 -- ============================================================
@@ -127,14 +163,13 @@ CREATE INDEX idx_messages_created_at
 -- Defensa en profundidad
 -- ============================================================
 
--- Evita modificaciones o eliminaciones accidentales
--- Incluso si alguien obtiene acceso a la DB
+-- Nadie puede UPDATE o DELETE mensajes
 REVOKE UPDATE, DELETE ON messages FROM PUBLIC;
 
 
 -- ============================================================
--- PROTECCIÓN EXTRA (OPCIONAL PERO RECOMENDADA)
--- Bloquea UPDATE y DELETE incluso para roles privilegiados
+-- PROTECCIÓN EXTRA (INMUTABILIDAD FUERTE)
+-- Incluso para roles privilegiados
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION prevent_message_mutation()
