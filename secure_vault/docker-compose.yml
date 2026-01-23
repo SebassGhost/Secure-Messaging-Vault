@@ -1,1 +1,19 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: secure_vault_db
+    restart: always
+    environment:
+      POSTGRES_USER: vault
+      POSTGRES_PASSWORD: vaultpass
+      POSTGRES_DB: secure_vault
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
 
