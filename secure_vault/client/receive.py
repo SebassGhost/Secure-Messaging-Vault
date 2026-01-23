@@ -1,3 +1,5 @@
+import base64
+
 from client.crypto import (
     decrypt_message,
     verify_signature,
@@ -10,7 +12,7 @@ def receive(payload: dict):
     print("\n[📥] Mensaje recibido")
 
     # =========================
-    # Validación mínima (Zero Trust)
+    # Zero Trust: validación estricta
     # =========================
     required_fields = {
         "ciphertext",
@@ -20,12 +22,15 @@ def receive(payload: dict):
         "signature",
     }
 
-    if not required_fields.issubset(payload):
+    if not isinstance(payload, dict):
+        raise Exception("Payload inválido: no es un diccionario")
+
+    if not required_fields.issubset(payload.keys()):
         raise Exception("Payload incompleto o malformado")
 
     ciphertext = payload["ciphertext"]
     nonce = payload["nonce"]
-    key = payload["key"]
+    encoded_key = payload["key"]
     received_hash = payload["content_hash"]
     signature = payload["signature"]
 
@@ -35,15 +40,13 @@ def receive(payload: dict):
     calculated_hash = calculate_hash(ciphertext)
 
     if calculated_hash != received_hash:
-        raise Exception(" Hash inválido: el mensaje fue alterado")
+        raise Exception("Hash inválido: el mensaje fue alterado")
 
     print("[✓] Integridad verificada")
 
     # =========================
     # 2. Verificar firma
     # =========================
-    # En producción:
-    # esta public_key debe venir del EMISOR (DB / directorio / key exchange)
     public_key = load_public_key()
 
     if not verify_signature(received_hash, signature, public_key):
@@ -52,7 +55,20 @@ def receive(payload: dict):
     print("[✓] Firma verificada")
 
     # =========================
-    # 3. Descifrar mensaje
+    # 3. Decodificar la key
+    # =========================
+    try:
+        key = base64.b64decode(encoded_key)
+    except Exception:
+        raise Exception("Key inválida: error al decodificar")
+
+    if len(key) not in (16, 24, 32):
+        raise Exception(
+            f"Key inválida para AES-GCM ({len(key)*8} bits)"
+        )
+
+    # =========================
+    # 4. Descifrar mensaje
     # =========================
     plaintext = decrypt_message(key, nonce, ciphertext)
 
@@ -65,7 +81,7 @@ def receive(payload: dict):
 def main():
     print(
         "[!] Este módulo no se ejecuta solo.\n"
-        "Debe recibir un payload desde transporte seguro (DB/red)."
+        "Debe recibir un payload desde transporte seguro."
     )
 
 
