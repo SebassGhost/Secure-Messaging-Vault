@@ -9,6 +9,20 @@ from client.crypto import (
 def receive(payload: dict):
     print("\n[📥] Mensaje recibido")
 
+    # =========================
+    # Validación mínima (Zero Trust)
+    # =========================
+    required_fields = {
+        "ciphertext",
+        "nonce",
+        "key",
+        "content_hash",
+        "signature",
+    }
+
+    if not required_fields.issubset(payload):
+        raise Exception("Payload incompleto o malformado")
+
     ciphertext = payload["ciphertext"]
     nonce = payload["nonce"]
     key = payload["key"]
@@ -19,17 +33,23 @@ def receive(payload: dict):
     # 1. Verificar integridad
     # =========================
     calculated_hash = calculate_hash(ciphertext)
+
     if calculated_hash != received_hash:
-        raise Exception("Hash inválido: el mensaje fue alterado")
+        raise Exception(" Hash inválido: el mensaje fue alterado")
+
+    print("[✓] Integridad verificada")
 
     # =========================
     # 2. Verificar firma
     # =========================
+    # En producción:
+    # esta public_key debe venir del EMISOR (DB / directorio / key exchange)
     public_key = load_public_key()
+
     if not verify_signature(received_hash, signature, public_key):
         raise Exception("Firma inválida: autor no confiable")
 
-    print("[✓] Firma e integridad verificadas")
+    print("[✓] Firma verificada")
 
     # =========================
     # 3. Descifrar mensaje
@@ -39,11 +59,13 @@ def receive(payload: dict):
     print("\n Mensaje en claro:")
     print(plaintext.decode())
 
+    return plaintext
+
 
 def main():
     print(
         "[!] Este módulo no se ejecuta solo.\n"
-        "Úsalo desde client.interactive o desde el transporte (DB/red)."
+        "Debe recibir un payload desde transporte seguro (DB/red)."
     )
 
 
