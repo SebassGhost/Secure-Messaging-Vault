@@ -4,10 +4,6 @@ from contextlib import contextmanager
 import os
 
 
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
-
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "port": os.getenv("DB_PORT", "5432"),
@@ -16,10 +12,6 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", "vault_pass"),
 }
 
-
-# ============================================================
-# CONTEXTO DE CONEXIÓN
-# ============================================================
 
 @contextmanager
 def get_connection():
@@ -34,39 +26,26 @@ def get_connection():
         conn.close()
 
 
-# ============================================================
+# =========================
 # USERS
-# ============================================================
+# =========================
 
-def create_user(public_key: str, fingerprint: bytes) -> str:
+def create_user(public_key: str) -> str:
     query = """
-        INSERT INTO users (public_key, fingerprint)
-        VALUES (%s, %s)
+        INSERT INTO users (public_key)
+        VALUES (%s)
         RETURNING user_id;
     """
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, (public_key, psycopg2.Binary(fingerprint)))
+            cur.execute(query, (public_key,))
             return cur.fetchone()[0]
 
 
-def get_user_by_fingerprint(fingerprint: bytes):
-    query = """
-        SELECT user_id, public_key
-        FROM users
-        WHERE fingerprint = %s;
-    """
-
-    with get_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, (psycopg2.Binary(fingerprint),))
-            return cur.fetchone()
-
-
-# ============================================================
+# =========================
 # CONVERSATIONS
-# ============================================================
+# =========================
 
 def create_conversation() -> str:
     query = """
@@ -80,29 +59,17 @@ def create_conversation() -> str:
             return cur.fetchone()[0]
 
 
-def add_participant(conversation_id: str, user_id: str):
-    query = """
-        INSERT INTO conversation_participants (conversation_id, user_id)
-        VALUES (%s, %s)
-        ON CONFLICT DO NOTHING;
-    """
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(query, (conversation_id, user_id))
-
-
-# ============================================================
+# =========================
 # MESSAGES
-# ============================================================
+# =========================
 
 def insert_message(
     conversation_id: str,
     sender_id: str,
     ciphertext: bytes,
-    content_hash: bytes,
-    signature: bytes,
-    prev_hash: bytes | None = None
+    content_hash: str,
+    signature: str,
+    prev_hash: str | None = None
 ):
     query = """
         INSERT INTO messages (
@@ -124,10 +91,10 @@ def insert_message(
                     conversation_id,
                     sender_id,
                     psycopg2.Binary(ciphertext),
-                    psycopg2.Binary(content_hash),
-                    psycopg2.Binary(prev_hash) if prev_hash else None,
-                    psycopg2.Binary(signature),
-                ),
+                    content_hash,
+                    prev_hash,
+                    signature,
+                )
             )
 
 
