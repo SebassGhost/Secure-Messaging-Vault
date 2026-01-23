@@ -40,6 +40,7 @@ Es un **laboratorio de aprendizaje** en criptografía y arquitectura segura.
 Desde la carpeta `secure_vault/`:
 
 bash:
+
 docker compose up -d
 
 Verifica que esté corriendo:
@@ -93,7 +94,9 @@ La base de datos nunca almacena texto plano.
 # Estado del Proyecto
 
 ·En desarrollo
+
 ·Enfocado en aprendizaje y experimentación
+
 ·No listo para producción
 
 # Nota Final
