@@ -9,7 +9,7 @@ BEGIN;
 -- EXTENSIONS
 -- ------------------------------------------------------------
 
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Modern UUID + crypto primitives
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 
@@ -21,7 +21,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE users (
 
     user_id UUID PRIMARY KEY
-        DEFAULT uuid_generate_v4(),
+        DEFAULT gen_random_uuid(),
 
     -- Public key in PEM or Base64
     public_key TEXT NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE users (
 CREATE TABLE conversations (
 
     conversation_id UUID PRIMARY KEY
-        DEFAULT uuid_generate_v4(),
+        DEFAULT gen_random_uuid(),
 
     created_at TIMESTAMP NOT NULL
         DEFAULT CURRENT_TIMESTAMP
@@ -84,7 +84,7 @@ CREATE TABLE conversation_participants (
 CREATE TABLE messages (
 
     message_id UUID PRIMARY KEY
-        DEFAULT uuid_generate_v4(),
+        DEFAULT gen_random_uuid(),
 
     conversation_id UUID NOT NULL,
 
