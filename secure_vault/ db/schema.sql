@@ -1,73 +1,66 @@
 -- ============================================================
 -- Secure Messaging Vault
--- Database Schema (PostgreSQL)
---
--- Filosofía:
--- - Zero Trust: la base de datos NO es confiable
--- - Append-only: los mensajes no se modifican ni se eliminan
--- - End-to-end encryption: la DB nunca ve texto plano
--- - Integridad verificable desde el cliente
+-- PostgreSQL Schema (Zero Trust / E2EE)
 -- ============================================================
 
+BEGIN;
 
 -- ------------------------------------------------------------
--- Extensiones necesarias
+-- EXTENSIONS
 -- ------------------------------------------------------------
 
--- UUIDs no predecibles
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- Utilidades criptográficas (hashing binario, etc.)
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 
 -- ============================================================
 -- USERS
--- Identidades criptográficas (NO personales)
+-- Cryptographic identities only (no personal data)
 -- ============================================================
+
 CREATE TABLE users (
 
-    -- Identificador lógico del usuario
-    user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID PRIMARY KEY
+        DEFAULT uuid_generate_v4(),
 
-    -- Clave pública del usuario (PEM / Base64)
+    -- Public key in PEM or Base64
     public_key TEXT NOT NULL,
 
-    -- Fingerprint de la clave pública
-    -- hash(public_key) generado en el cliente
+    -- Fingerprint = hash(public_key)
     fingerprint BYTEA NOT NULL UNIQUE,
 
-    -- Momento de creación de la identidad
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP
 );
 
 
 -- ============================================================
 -- CONVERSATIONS
--- Canales de comunicación
--- No contienen metadata sensible
+-- Communication channels
 -- ============================================================
+
 CREATE TABLE conversations (
 
-    -- Identificador del canal
-    conversation_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    conversation_id UUID PRIMARY KEY
+        DEFAULT uuid_generate_v4(),
 
-    -- Fecha de creación del canal
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP
 );
 
 
 -- ============================================================
 -- CONVERSATION PARTICIPANTS
--- Quién pertenece a cada conversación
--- La DB NO decide confianza, solo registra
+-- Membership registry only (no trust logic)
 -- ============================================================
+
 CREATE TABLE conversation_participants (
 
     conversation_id UUID NOT NULL,
     user_id UUID NOT NULL,
 
-    joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    joined_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (conversation_id, user_id),
 
@@ -85,44 +78,34 @@ CREATE TABLE conversation_participants (
 
 -- ============================================================
 -- MESSAGES
--- Núcleo del sistema
--- Cada fila es INMUTABLE (append-only)
+-- Append-only, immutable, end-to-end encrypted
 -- ============================================================
+
 CREATE TABLE messages (
 
-    -- Identificador único del mensaje
-    message_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    message_id UUID PRIMARY KEY
+        DEFAULT uuid_generate_v4(),
 
-    -- Conversación a la que pertenece
     conversation_id UUID NOT NULL,
 
-    -- Usuario emisor (identidad criptográfica)
     sender_id UUID NOT NULL,
 
-    -- Mensaje cifrado (E2EE)
+    -- Encrypted payload (E2EE)
     ciphertext BYTEA NOT NULL,
 
-    -- Hash criptográfico del mensaje
-    -- Calculado en el cliente sobre:
-    -- ciphertext + metadata relevante
+    -- Hash calculated client-side over:
+    -- ciphertext + sender_id + conversation_id + prev_hash
     content_hash BYTEA NOT NULL,
 
-    -- Hash del mensaje anterior en la conversación
-    -- Permite detectar:
-    -- - eliminación
-    -- - reordenamiento
-    -- - manipulación
+    -- Hash of previous message in conversation
+    -- NULL only for the first message
     prev_hash BYTEA,
 
-    -- Firma digital del content_hash
-    -- Garantiza:
-    -- - autoría
-    -- - integridad
-    -- - no repudio
+    -- Signature of content_hash using sender private key
     signature BYTEA NOT NULL,
 
-    -- Fecha de inserción (solo referencia temporal)
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_message_conversation
         FOREIGN KEY (conversation_id)
@@ -137,49 +120,54 @@ CREATE TABLE messages (
 
 
 -- ============================================================
--- ÍNDICES
--- Performance sin comprometer seguridad
+-- INDEXES
 -- ============================================================
 
--- Mensajes por conversación
 CREATE INDEX idx_messages_conversation
     ON messages(conversation_id);
 
--- Mensajes ordenados cronológicamente
 CREATE INDEX idx_messages_created_at
     ON messages(created_at);
 
--- Conversación + tiempo (lectura eficiente)
 CREATE INDEX idx_messages_conversation_created
     ON messages(conversation_id, created_at);
 
--- Auditoría local por emisor
 CREATE INDEX idx_messages_sender
     ON messages(sender_id);
 
-
--- ============================================================
--- PROTECCIÓN LÓGICA
--- Defensa en profundidad
--- ============================================================
-
--- Nadie puede UPDATE o DELETE mensajes
-REVOKE UPDATE, DELETE ON messages FROM PUBLIC;
+-- Chain integrity / fast verification
+CREATE INDEX idx_messages_chain
+    ON messages(conversation_id, prev_hash);
 
 
 -- ============================================================
--- PROTECCIÓN EXTRA (INMUTABILIDAD FUERTE)
--- Incluso para roles privilegiados
+-- ACCESS CONTROL
+-- ============================================================
+
+-- Messages are INSERT-only
+REVOKE UPDATE, DELETE, TRUNCATE ON messages FROM PUBLIC;
+
+
+-- ============================================================
+-- STRONG IMMUTABILITY (Defense in Depth)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION prevent_message_mutation()
-RETURNS trigger AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
 BEGIN
-    RAISE EXCEPTION 'Messages are immutable (append-only log)';
+    RAISE EXCEPTION
+        'Messages are immutable (append-only log)';
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 CREATE TRIGGER no_message_update_or_delete
-BEFORE UPDATE OR DELETE ON messages
-FOR EACH ROW
+BEFORE UPDATE OR DELETE OR TRUNCATE
+ON messages
+FOR EACH STATEMENT
 EXECUTE FUNCTION prevent_message_mutation();
+
+
+COMMIT;
