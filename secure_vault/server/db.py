@@ -2,6 +2,7 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
+from typing import Optional
 
 
 # ============================================================
@@ -10,7 +11,7 @@ from contextlib import contextmanager
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
-    "port": os.getenv("DB_PORT", "5432"),
+    "port": int(os.getenv("DB_PORT", 5432)),   # 👈 int, no str
     "dbname": os.getenv("DB_NAME", "secure_vault"),
     "user": os.getenv("DB_USER", "vault"),
     "password": os.getenv("DB_PASSWORD", "vaultpass"),
@@ -31,7 +32,7 @@ def get_connection():
 
 
 # ============================================================
-# USERS (Cryptographic identities)
+# USERS (Cryptographic identities only)
 # ============================================================
 
 def create_user(public_key: str, fingerprint: bytes) -> str:
@@ -75,8 +76,13 @@ def get_user_by_fingerprint(fingerprint: bytes):
 # ============================================================
 
 def create_conversation() -> str:
+    """
+    UUID generado EXCLUSIVAMENTE por PostgreSQL
+    """
+
     query = """
-        INSERT INTO conversations DEFAULT VALUES
+        INSERT INTO conversations
+        DEFAULT VALUES
         RETURNING conversation_id;
     """
 
@@ -108,7 +114,7 @@ def insert_message(
     ciphertext: bytes,
     content_hash: bytes,
     signature: bytes,
-    prev_hash: bytes | None = None,
+    prev_hash: Optional[bytes] = None,
 ):
     """
     content_hash = hash(ciphertext + sender_id + conversation_id + prev_hash)
@@ -168,7 +174,7 @@ def get_messages(conversation_id: str):
             return cur.fetchall()
 
 
-def get_last_message_hash(conversation_id: str) -> bytes | None:
+def get_last_message_hash(conversation_id: str) -> Optional[bytes]:
     """
     Útil para encadenar prev_hash
     """
