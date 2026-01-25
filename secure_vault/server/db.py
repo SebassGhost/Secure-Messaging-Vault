@@ -12,8 +12,8 @@ DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "port": os.getenv("DB_PORT", "5432"),
     "dbname": os.getenv("DB_NAME", "secure_vault"),
-    "user": os.getenv("DB_USER", "vault_user"),
-    "password": os.getenv("DB_PASSWORD", "vault_pass"),
+    "user": os.getenv("DB_USER", "vault"),
+    "password": os.getenv("DB_PASSWORD", "vaultpass"),
 }
 
 
