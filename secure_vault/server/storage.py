@@ -2,25 +2,20 @@ import os
 import uuid
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
+from .database import get_connection, init_db
 
 load_dotenv()
-
-# ======== CLAVE ========
+init_db()
 
 SECRET_KEY = os.getenv("VAULT_SECRET_KEY")
 
 if not SECRET_KEY:
     raise RuntimeError("VAULT_SECRET_KEY not set")
 
-fernet = Fernet(Fernet.generate_key() if SECRET_KEY == "DEV" else Fernet.generate_key())
+fernet = Fernet(SECRET_KEY.encode())
 
 
-# ======== STORAGE EN MEMORIA (por ahora) ========
-
-_MESSAGES: dict[str, dict] = {}
-
-
-# ======== FUNCIONES ========
+# ======== HELPERS ========
 
 def _encrypt(text: str) -> str:
     return fernet.encrypt(text.encode()).decode()
@@ -30,17 +25,22 @@ def _decrypt(token: str) -> str:
     return fernet.decrypt(token.encode()).decode()
 
 
+# ======== CRUD ========
+
 def store_message(sender: str, recipient: str, content: str) -> dict:
     message_id = str(uuid.uuid4())
+    encrypted = _encrypt(content)
 
-    encrypted_content = _encrypt(content)
+    conn = get_connection()
+    cur = conn.cursor()
 
-    _MESSAGES[message_id] = {
-        "id": message_id,
-        "sender": sender,
-        "recipient": recipient,
-        "content": encrypted_content
-    }
+    cur.execute(
+        "INSERT INTO messages VALUES (?, ?, ?, ?)",
+        (message_id, sender, recipient, encrypted)
+    )
+
+    conn.commit()
+    conn.close()
 
     return {
         "id": message_id,
@@ -49,35 +49,56 @@ def store_message(sender: str, recipient: str, content: str) -> dict:
     }
 
 
-def get_message(message_id: str) -> dict | None:
-    msg = _MESSAGES.get(message_id)
-    if not msg:
+def get_message(message_id: str):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM messages WHERE id = ?", (message_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
         return None
 
     return {
-        "id": msg["id"],
-        "sender": msg["sender"],
-        "recipient": msg["recipient"],
-        "content": _decrypt(msg["content"])
+        "id": row[0],
+        "sender": row[1],
+        "recipient": row[2],
+        "content": _decrypt(row[3])
     }
 
 
-def list_messages(recipient: str | None = None) -> list[dict]:
-    results = []
+def list_messages(recipient: str | None = None):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    for msg in _MESSAGES.values():
-        if recipient and msg["recipient"] != recipient:
-            continue
+    if recipient:
+        cur.execute("SELECT * FROM messages WHERE recipient = ?", (recipient,))
+    else:
+        cur.execute("SELECT * FROM messages")
 
-        results.append({
-            "id": msg["id"],
-            "sender": msg["sender"],
-            "recipient": msg["recipient"],
-            "content": _decrypt(msg["content"])
-        })
+    rows = cur.fetchall()
+    conn.close()
 
-    return results
+    return [
+        {
+            "id": r[0],
+            "sender": r[1],
+            "recipient": r[2],
+            "content": _decrypt(r[3])
+        }
+        for r in rows
+    ]
 
 
 def delete_message(message_id: str) -> bool:
-    return _MESSAGES.pop(message_id, None) is not None
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+    deleted = cur.rowcount > 0
+
+    conn.commit()
+    conn.close()
+
+    return deleted
