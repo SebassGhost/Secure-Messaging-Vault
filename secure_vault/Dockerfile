@@ -3,6 +3,7 @@ FROM python:3.11-slim
 # Evitar buffers raros
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 WORKDIR /app
 
@@ -16,4 +17,4 @@ COPY . .
 # Puerto FastAPI
 EXPOSE 8000
 
-CMD ["uvicorn", "server.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "secure_vault.server.api:app", "--host", "0.0.0.0", "--port", "8000"]
