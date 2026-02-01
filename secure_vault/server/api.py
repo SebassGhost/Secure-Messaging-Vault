@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from secure_vault.server import storage
+from server import storage
 
 app = FastAPI(title="Secure Messaging Vault")
 
