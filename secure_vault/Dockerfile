@@ -16,4 +16,4 @@ COPY . .
 # Puerto FastAPI
 EXPOSE 8000
 
-CMD ["uvicorn", "secure_vault.server.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "server.api:app", "--host", "0.0.0.0", "--port", "8000"]
