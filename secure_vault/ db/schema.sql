@@ -33,6 +33,48 @@ CREATE TABLE users (
         DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ============================================================
+-- USER KEYS
+-- Rotatable keys per user (multi-device / key rotation)
+-- ============================================================
+
+CREATE TABLE user_keys (
+
+    user_id UUID NOT NULL,
+
+    -- Client-defined key identifier (e.g., "primary", "device-1")
+    key_id TEXT NOT NULL,
+
+    -- Public key in PEM or Base64
+    public_key TEXT NOT NULL,
+
+    -- Fingerprint = SHA-256(public_key)
+    fingerprint BYTEA NOT NULL UNIQUE,
+
+    is_primary BOOLEAN NOT NULL
+        DEFAULT FALSE,
+
+    created_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    revoked_at TIMESTAMP,
+
+    PRIMARY KEY (user_id, key_id),
+
+    CONSTRAINT fk_user_keys_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX idx_user_keys_user
+    ON user_keys(user_id);
+
+-- Only one primary key per user
+CREATE UNIQUE INDEX ux_user_keys_primary
+    ON user_keys(user_id)
+    WHERE is_primary;
+
 
 -- ============================================================
 -- CONVERSATIONS

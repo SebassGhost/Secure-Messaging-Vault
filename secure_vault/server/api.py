@@ -21,6 +21,13 @@ class UserIn(BaseModel):
     fingerprint: str
 
 
+class UserKeyIn(BaseModel):
+    key_id: str
+    public_key: str
+    fingerprint: str
+    is_primary: Optional[bool] = False
+
+
 class MessageIn(BaseModel):
     sender_id: str
     ciphertext: str
@@ -70,7 +77,7 @@ def create_user(data: UserIn):
     user_id = db.create_user(data.public_key, fingerprint_bytes)
     if not user_id:
         raise HTTPException(status_code=500, detail="Failed to create or fetch user")
-    return {"user_id": user_id}
+    return {"user_id": user_id, "key_id": "primary"}
 
 
 @app.get("/users/{user_id}")
@@ -96,6 +103,67 @@ def get_user_by_fingerprint(fingerprint: str = Query(...)):
         "public_key": user["public_key"],
         "created_at": user["created_at"],
     }
+
+
+@app.post("/users/{user_id}/keys")
+def add_user_key(user_id: str, data: UserKeyIn):
+    _require_uuid(user_id, "user_id")
+    if not data.key_id.strip():
+        raise HTTPException(status_code=400, detail="key_id cannot be empty")
+    if not db.get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="User not found")
+
+    key_id = db.add_user_key(
+        user_id=user_id,
+        key_id=data.key_id,
+        public_key=data.public_key,
+        fingerprint=_b64_to_bytes(data.fingerprint),
+        is_primary=bool(data.is_primary),
+    )
+    if not key_id:
+        raise HTTPException(status_code=409, detail="Key already exists")
+    return {"key_id": key_id}
+
+
+@app.get("/users/{user_id}/keys")
+def list_user_keys(user_id: str):
+    _require_uuid(user_id, "user_id")
+    if not db.get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="User not found")
+    keys = db.list_user_keys(user_id)
+    return [
+        {
+            "key_id": k["key_id"],
+            "public_key": k["public_key"],
+            "fingerprint": _bytes_to_b64(k["fingerprint"]),
+            "is_primary": k["is_primary"],
+            "created_at": k["created_at"],
+            "revoked_at": k["revoked_at"],
+        }
+        for k in keys
+    ]
+
+
+@app.post("/users/{user_id}/keys/{key_id}/revoke")
+def revoke_user_key(user_id: str, key_id: str):
+    _require_uuid(user_id, "user_id")
+    if not db.get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="User not found")
+    revoked = db.revoke_user_key(user_id, key_id)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="Key not found or already revoked")
+    return {"revoked": True}
+
+
+@app.post("/users/{user_id}/keys/{key_id}/primary")
+def set_primary_key(user_id: str, key_id: str):
+    _require_uuid(user_id, "user_id")
+    if not db.get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="User not found")
+    updated = db.set_primary_key(user_id, key_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Key not found or revoked")
+    return {"primary": True}
 
 
 @app.post("/conversations")
@@ -133,6 +201,11 @@ def create_message(conversation_id: str, data: MessageIn):
     if not db.is_participant(conversation_id, data.sender_id):
         raise HTTPException(status_code=403, detail="Sender is not a participant")
 
+    key_id = data.key_id or "primary"
+    key = db.get_active_key(data.sender_id, key_id)
+    if not key:
+        raise HTTPException(status_code=400, detail="Invalid or revoked key_id")
+
     message_id, created_at = db.insert_message(
         conversation_id=conversation_id,
         sender_id=data.sender_id,
@@ -141,7 +214,7 @@ def create_message(conversation_id: str, data: MessageIn):
         prev_hash=_b64_to_bytes(data.prev_hash),
         signature=_b64_to_bytes(data.signature),
         client_timestamp=data.client_timestamp,
-        key_id=data.key_id,
+        key_id=key_id,
     )
 
     return {

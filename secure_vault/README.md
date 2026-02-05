@@ -122,6 +122,7 @@ el algoritmo criptográfico del cliente, solo el **contrato de intercambio**.
 1. El cliente **siempre** cifra y firma antes de enviar.
 2. El servidor **nunca** descifra, solo almacena y devuelve lo recibido.
 3. El cliente valida firmas y cadena de hashes antes de mostrar mensajes.
+4. Si `key_id` no se envía, el servidor asume `"primary"`.
 
 ## Documentación avanzada de la API
 
@@ -181,7 +182,8 @@ Body:
 Respuesta:
 ```json
 {
-  "user_id": "uuid"
+  "user_id": "uuid",
+  "key_id": "primary"
 }
 ```
 
@@ -210,6 +212,66 @@ Respuesta:
   "user_id": "uuid",
   "public_key": "string",
   "created_at": "2026-02-05T00:50:01.186203"
+}
+```
+
+### 4.1) Agregar nueva clave (rotación)
+
+**POST /users/{user_id}/keys**  
+Body:
+```json
+{
+  "key_id": "device-1",
+  "public_key": "string",
+  "fingerprint": "base64",
+  "is_primary": false
+}
+```
+Respuesta:
+```json
+{
+  "key_id": "device-1"
+}
+```
+
+Notas:
+- `key_id` lo define el cliente (por ejemplo: `primary`, `device-1`).
+- `fingerprint` = SHA‑256(`public_key`) en base64.
+
+### 4.2) Listar claves de un usuario
+
+**GET /users/{user_id}/keys**  
+Respuesta:
+```json
+[
+  {
+    "key_id": "primary",
+    "public_key": "string",
+    "fingerprint": "base64",
+    "is_primary": true,
+    "created_at": "2026-02-05T00:50:01.186203",
+    "revoked_at": null
+  }
+]
+```
+
+### 4.3) Revocar clave
+
+**POST /users/{user_id}/keys/{key_id}/revoke**  
+Respuesta:
+```json
+{
+  "revoked": true
+}
+```
+
+### 4.4) Marcar clave como primaria
+
+**POST /users/{user_id}/keys/{key_id}/primary**  
+Respuesta:
+```json
+{
+  "primary": true
 }
 ```
 
@@ -319,6 +381,13 @@ No impone un algoritmo específico, solo el flujo compatible con el backend.
 1. Generar par de claves (pública/privada) en el cliente.
 2. Calcular `fingerprint = SHA‑256(public_key)` en bytes.
 3. Enviar `public_key` y `fingerprint` en base64 a `POST /users`.
+
+### 1.1) Rotar claves
+
+Cuando se genera una nueva clave:
+1. Enviar a `POST /users/{user_id}/keys` con `key_id` único.
+2. Si será la clave principal, llamar a `POST /users/{user_id}/keys/{key_id}/primary`.
+3. Para desactivar una clave vieja, usar `POST /users/{user_id}/keys/{key_id}/revoke`.
 
 ### 2) Preparar el mensaje
 

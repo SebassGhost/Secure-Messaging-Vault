@@ -56,18 +56,38 @@ def create_user(public_key: str, fingerprint: bytes) -> Optional[str]:
             )
             row = cur.fetchone()
             if row:
-                return row[0]
+                user_id = row[0]
+            else:
+                cur.execute(
+                    """
+                    SELECT user_id
+                    FROM users
+                    WHERE fingerprint = %s;
+                    """,
+                    (psycopg2.Binary(fingerprint),)
+                )
+                existing = cur.fetchone()
+                user_id = existing[0] if existing else None
 
+            if not user_id:
+                return None
+
+            # Ensure a primary key record exists for this user
             cur.execute(
                 """
-                SELECT user_id
-                FROM users
-                WHERE fingerprint = %s;
+                INSERT INTO user_keys (user_id, key_id, public_key, fingerprint, is_primary)
+                VALUES (%s, %s, %s, %s, TRUE)
+                ON CONFLICT (user_id, key_id) DO NOTHING;
                 """,
-                (psycopg2.Binary(fingerprint),)
+                (
+                    user_id,
+                    "primary",
+                    public_key,
+                    psycopg2.Binary(fingerprint),
+                )
             )
-            existing = cur.fetchone()
-            return existing[0] if existing else None
+            return user_id
+            
 
 
 def get_user_by_fingerprint(fingerprint: bytes):
@@ -93,6 +113,105 @@ def get_user_by_id(user_id: str):
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, (user_id,))
+            return cur.fetchone()
+
+
+def add_user_key(
+    user_id: str,
+    key_id: str,
+    public_key: str,
+    fingerprint: bytes,
+    is_primary: bool = False,
+):
+    query = """
+        INSERT INTO user_keys (user_id, key_id, public_key, fingerprint, is_primary)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, key_id) DO NOTHING
+        RETURNING key_id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    user_id,
+                    key_id,
+                    public_key,
+                    psycopg2.Binary(fingerprint),
+                    is_primary,
+                )
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+
+
+def list_user_keys(user_id: str):
+    query = """
+        SELECT key_id, public_key, fingerprint, is_primary, created_at, revoked_at
+        FROM user_keys
+        WHERE user_id = %s
+        ORDER BY created_at ASC;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (user_id,))
+            return cur.fetchall()
+
+
+def revoke_user_key(user_id: str, key_id: str) -> bool:
+    query = """
+        UPDATE user_keys
+        SET revoked_at = CURRENT_TIMESTAMP,
+            is_primary = FALSE
+        WHERE user_id = %s
+          AND key_id = %s
+          AND revoked_at IS NULL;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (user_id, key_id))
+            return cur.rowcount > 0
+
+
+def set_primary_key(user_id: str, key_id: str) -> bool:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE user_keys
+                SET is_primary = FALSE
+                WHERE user_id = %s;
+                """,
+                (user_id,)
+            )
+            cur.execute(
+                """
+                UPDATE user_keys
+                SET is_primary = TRUE
+                WHERE user_id = %s
+                  AND key_id = %s
+                  AND revoked_at IS NULL;
+                """,
+                (user_id, key_id)
+            )
+            return cur.rowcount > 0
+
+
+def get_active_key(user_id: str, key_id: str):
+    query = """
+        SELECT key_id, public_key, fingerprint, is_primary, revoked_at
+        FROM user_keys
+        WHERE user_id = %s
+          AND key_id = %s
+          AND revoked_at IS NULL;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (user_id, key_id))
             return cur.fetchone()
 
 

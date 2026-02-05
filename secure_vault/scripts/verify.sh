@@ -30,8 +30,14 @@ fi
 
 echo "Checking schema state..."
 schema_exists="$(docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.users') IS NOT NULL;")"
+keys_exists="$(docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.user_keys') IS NOT NULL;")"
 if echo "$schema_exists" | grep -q "t"; then
-  echo "Schema already exists. Skipping schema apply."
+  if echo "$keys_exists" | grep -q "t"; then
+    echo "Schema already exists. Skipping schema apply."
+  else
+    echo "Applying user_keys migration..."
+    cat "scripts/migrate_user_keys_table.sql" | docker compose exec -T db psql -U vault -d secure_vault >/dev/null
+  fi
 else
   echo "Applying schema..."
   cat " db/schema.sql" | docker compose exec -T db psql -U vault -d secure_vault >/dev/null
@@ -39,6 +45,9 @@ fi
 
 echo "Checking tables..."
 docker compose exec -T db psql -U vault -d secure_vault -c "\dt"
+
+echo "Backfilling user keys..."
+cat "scripts/migrate_user_keys.sql" | docker compose exec -T db psql -U vault -d secure_vault >/dev/null
 
 echo "Generating fingerprints..."
 finger1="$(python3 - << 'PY'
@@ -112,7 +121,7 @@ payload = {
     "prev_hash": None,
     "signature": "c2lnbmF0dXJlLWRlbW8=",
     "client_timestamp": "2026-02-05T10:00:00Z",
-    "key_id": None,
+    "key_id": "primary",
 }
 
 r = requests.post(base + f"/conversations/{conversation_id}/messages", json=payload, timeout=5)
@@ -126,6 +135,25 @@ print("last hash", r.status_code, r.json() if r.headers.get("content-type","").s
 
 r = requests.get(base + f"/users/{user1}/conversations", timeout=5)
 print("list conversations", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+
+# rotate key for user1
+payload = {
+    "key_id": "device-1",
+    "public_key": "pubkey-demo-device-1",
+    "fingerprint": "Y2lwaGVydGV4dC1kZW1v",
+    "is_primary": False,
+}
+r = requests.post(base + f"/users/{user1}/keys", json=payload, timeout=5)
+if r.status_code == 409:
+    print("add key", r.status_code, "already exists (ok)")
+else:
+    print("add key", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+
+r = requests.post(base + f"/users/{user1}/keys/device-1/primary", timeout=5)
+print("set primary", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+
+r = requests.get(base + f"/users/{user1}/keys", timeout=5)
+print("list keys", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
 PY
 
 echo "Verification complete."
