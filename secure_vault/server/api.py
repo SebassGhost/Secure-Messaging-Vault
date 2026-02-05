@@ -1,4 +1,5 @@
 import base64
+import uuid
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -46,6 +47,12 @@ def _bytes_to_b64(value: Optional[bytes]) -> Optional[str]:
         return None
     return base64.b64encode(value).decode()
 
+def _require_uuid(value: str, label: str):
+    try:
+        uuid.UUID(value)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid {label} UUID") from exc
+
 
 # ======== RUTAS ========
 
@@ -68,6 +75,7 @@ def create_user(data: UserIn):
 
 @app.get("/users/{user_id}")
 def get_user(user_id: str):
+    _require_uuid(user_id, "user_id")
     user = db.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -98,17 +106,30 @@ def create_conversation():
 
 @app.post("/conversations/{conversation_id}/participants")
 def add_participant(conversation_id: str, data: ParticipantIn):
+    _require_uuid(conversation_id, "conversation_id")
+    _require_uuid(data.user_id, "user_id")
+    if not db.conversation_exists(conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if not db.get_user_by_id(data.user_id):
+        raise HTTPException(status_code=404, detail="User not found")
     db.add_participant(conversation_id, data.user_id)
     return {"added": True}
 
 
 @app.get("/users/{user_id}/conversations")
 def list_conversations(user_id: str):
+    _require_uuid(user_id, "user_id")
+    if not db.get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="User not found")
     return db.list_conversations_for_user(user_id)
 
 
 @app.post("/conversations/{conversation_id}/messages")
 def create_message(conversation_id: str, data: MessageIn):
+    _require_uuid(conversation_id, "conversation_id")
+    _require_uuid(data.sender_id, "sender_id")
+    if not db.conversation_exists(conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
     if not db.is_participant(conversation_id, data.sender_id):
         raise HTTPException(status_code=403, detail="Sender is not a participant")
 
@@ -135,6 +156,13 @@ def list_messages(
     after: Optional[str] = None,
     limit: int = Query(50, ge=1, le=200),
 ):
+    _require_uuid(conversation_id, "conversation_id")
+    if not db.conversation_exists(conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if after:
+        _require_uuid(after, "message_id")
+        if not db.message_exists(conversation_id, after):
+            raise HTTPException(status_code=400, detail="Invalid 'after' message_id")
     rows = db.get_messages(
         conversation_id=conversation_id,
         after_message_id=after,
@@ -158,5 +186,8 @@ def list_messages(
 
 @app.get("/conversations/{conversation_id}/messages/last-hash")
 def get_last_hash(conversation_id: str):
+    _require_uuid(conversation_id, "conversation_id")
+    if not db.conversation_exists(conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
     last_hash = db.get_last_message_hash(conversation_id)
     return {"content_hash": _bytes_to_b64(last_hash)}

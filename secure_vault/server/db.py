@@ -117,6 +117,20 @@ def create_conversation() -> str:
             return cur.fetchone()[0]
 
 
+def conversation_exists(conversation_id: str) -> bool:
+    query = """
+        SELECT 1
+        FROM conversations
+        WHERE conversation_id = %s
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (conversation_id,))
+            return cur.fetchone() is not None
+
+
 def add_participant(conversation_id: str, user_id: str):
     query = """
         INSERT INTO conversation_participants (conversation_id, user_id)
@@ -267,6 +281,20 @@ def get_messages(
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params)
             return cur.fetchall()
+
+
+def message_exists(conversation_id: str, message_id: str) -> bool:
+    query = """
+        SELECT 1
+        FROM messages
+        WHERE conversation_id = %s AND message_id = %s
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (conversation_id, message_id))
+            return cur.fetchone() is not None
 
 
 def get_last_message_hash(conversation_id: str) -> Optional[bytes]:
