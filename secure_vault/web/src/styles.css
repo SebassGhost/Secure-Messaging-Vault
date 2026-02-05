@@ -87,6 +87,21 @@ button {
   font-weight: 600;
 }
 
+.ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px dashed var(--accent);
+}
+
+.error {
+  margin-top: 8px;
+  color: #a11313;
+  background: #ffe5e5;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #f2b3b3;
+}
+
 .code {
   background: #1f1a14;
   color: #e7e1d8;
