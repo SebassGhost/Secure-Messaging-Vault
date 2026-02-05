@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+
+# Local env
+.env
+
+# Database
+*.db
+
+# Client keys/state
+client/keys/
+client/state.json
+
+# Node / Vite
+web/node_modules/
+web/dist/
+
+# OS
+.DS_Store
+Thumbs.db
