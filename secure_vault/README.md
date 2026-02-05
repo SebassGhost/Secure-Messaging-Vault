@@ -143,6 +143,20 @@ el algoritmo criptográfico del cliente, solo el **contrato de intercambio**.
 - `404 Not Found`: recurso no encontrado.
 - `500 Internal Server Error`: error no controlado o conflicto de datos.
 
+## Variables de entorno
+
+Estas son las variables necesarias para el backend actual:
+
+```
+DB_HOST
+DB_PORT
+DB_NAME
+DB_USER
+DB_PASSWORD
+```
+
+Nota: `VAULT_SECRET_KEY` ya no es necesaria porque el cifrado es 100% cliente.
+
 ### 1) Healthcheck
 
 **GET /**  
