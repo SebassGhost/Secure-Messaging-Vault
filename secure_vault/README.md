@@ -417,6 +417,19 @@ Respuesta:
 ]
 ```
 
+**Ejemplo rápido (PowerShell):**
+```powershell
+curl -X POST http://localhost:8000/messages/{message_id}/delivered `
+  -H "Content-Type: application/json" `
+  -d "{\"user_id\":\"{user_id}\"}"
+
+curl -X POST http://localhost:8000/messages/{message_id}/read `
+  -H "Content-Type: application/json" `
+  -d "{\"user_id\":\"{user_id}\"}"
+
+curl "http://localhost:8000/messages/{message_id}/status"
+```
+
 ### 14) Subir adjunto cifrado
 
 **POST /messages/{message_id}/attachments**  
@@ -474,6 +487,25 @@ Respuesta:
   "meta_signature": "base64|null",
   "created_at": "2026-02-05T16:46:17.211498"
 }
+```
+
+**Ejemplo rápido (PowerShell):**
+```powershell
+curl -X POST http://localhost:8000/messages/{message_id}/attachments `
+  -H "Content-Type: application/json" `
+  -d '{
+    "uploader_id":"{user_id}",
+    "ciphertext":"YXR0YWNobWVudC1iaW5hcnk=",
+    "content_hash":"YXR0YWNobWVudC1oYXNo",
+    "signature":"YXR0YWNobWVudC1zaWc=",
+    "meta_ciphertext":"bWV0YS1lbmM=",
+    "meta_hash":"bWV0YS1oYXNo",
+    "meta_signature":"bWV0YS1zaWc="
+  }'
+
+curl "http://localhost:8000/messages/{message_id}/attachments?user_id={user_id}"
+
+curl "http://localhost:8000/attachments/{attachment_id}?user_id={user_id}"
 ```
 
 ## Guía de integración del cliente (E2EE)
