@@ -14,6 +14,20 @@ require_cmd python3
 echo "Starting services..."
 docker compose up -d --build >/dev/null
 
+echo "Waiting for database to be ready..."
+ready=0
+for i in $(seq 1 30); do
+  if docker compose exec -T db pg_isready -U vault -d secure_vault >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "$ready" -ne 1 ]; then
+  echo "Database is not ready" >&2
+  exit 1
+fi
+
 echo "Checking schema state..."
 schema_exists="$(docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.users') IS NOT NULL;")"
 if echo "$schema_exists" | grep -q "t"; then

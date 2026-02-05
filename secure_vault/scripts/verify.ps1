@@ -14,6 +14,20 @@ Assert-Command "python"
 Write-Host "Starting services..."
 docker compose up -d --build | Out-Null
 
+Write-Host "Waiting for database to be ready..."
+$ready = $false
+for ($i = 0; $i -lt 30; $i++) {
+    $status = docker compose exec -T db pg_isready -U vault -d secure_vault 2>$null
+    if ($status -match "accepting connections") {
+        $ready = $true
+        break
+    }
+    Start-Sleep -Seconds 1
+}
+if (-not $ready) {
+    throw "Database is not ready"
+}
+
 Write-Host "Checking schema state..."
 $schemaExists = docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.users') IS NOT NULL;"
 
