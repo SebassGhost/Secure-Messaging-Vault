@@ -1,4 +1,6 @@
+# =====================
 # Python
+# =====================
 __pycache__/
 *.pyc
 *.pyo
@@ -6,20 +8,40 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# Local env
+# =====================
+# Virtual environments
+# =====================
+venv/
 .env
 
-# Database
-*.db
-
-# Client keys/state
+# =====================
+# Secrets / Keys
+# =====================
+*.pem
+*.key
+secure_vault/client/keys/
 client/keys/
 client/state.json
 
+# =====================
+# Database
+# =====================
+*.db
+
+# =====================
+# Docker
+# =====================
+*.log
+docker-data/
+
+# =====================
 # Node / Vite
+# =====================
 web/node_modules/
 web/dist/
 
+# =====================
 # OS
+# =====================
 .DS_Store
 Thumbs.db
