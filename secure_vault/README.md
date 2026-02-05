@@ -628,6 +628,55 @@ Pruebas unitarias básicas del API con `TestClient`:
 pytest -q
 ```
 
+## Cliente CLI (Python)
+
+Cliente mínimo para probar el API desde terminal.
+
+### Comandos principales
+
+```bash
+# Crear identidad local (si no existe) y registrar usuario
+python -m client.cli register
+
+# Crear conversación
+python -m client.cli create-conversation
+
+# Agregar participante
+python -m client.cli add-participant <conversation_id> <user_id>
+
+# Enviar mensaje demo
+python -m client.cli send <conversation_id> "hola mundo"
+
+# Listar mensajes
+python -m client.cli list-messages <conversation_id>
+
+# Marcar entregado / leído
+python -m client.cli delivered <message_id> <user_id>
+python -m client.cli read <message_id> <user_id>
+
+# Ver estado
+python -m client.cli status <message_id>
+```
+
+Variables útiles:
+- `--api` para cambiar la URL (default `http://localhost:8000`)
+- `--user-id` para enviar como un usuario específico
+
+## Cliente Web (React/Vite)
+
+Cliente básico para probar el flujo E2EE sin tooling extra en backend.
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Opcional:
+```
+VITE_API_URL=http://localhost:8000
+```
+
 ## Funciones futuras (roadmap)
 
 Estas son mejoras planeadas y coherentes con el diseño E2EE:
