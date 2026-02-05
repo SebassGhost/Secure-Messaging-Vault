@@ -31,9 +31,15 @@ fi
 echo "Checking schema state..."
 schema_exists="$(docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.users') IS NOT NULL;")"
 keys_exists="$(docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.user_keys') IS NOT NULL;")"
+status_exists="$(docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.message_status') IS NOT NULL;")"
 if echo "$schema_exists" | grep -q "t"; then
   if echo "$keys_exists" | grep -q "t"; then
-    echo "Schema already exists. Skipping schema apply."
+    if echo "$status_exists" | grep -q "t"; then
+      echo "Schema already exists. Skipping schema apply."
+    else
+      echo "Applying message_status migration..."
+      cat "scripts/migrate_message_status_table.sql" | docker compose exec -T db psql -U vault -d secure_vault >/dev/null
+    fi
   else
     echo "Applying user_keys migration..."
     cat "scripts/migrate_user_keys_table.sql" | docker compose exec -T db psql -U vault -d secure_vault >/dev/null
@@ -126,6 +132,7 @@ payload = {
 
 r = requests.post(base + f"/conversations/{conversation_id}/messages", json=payload, timeout=5)
 print("send message", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+message_id = r.json().get("message_id")
 
 r = requests.get(base + f"/conversations/{conversation_id}/messages", timeout=5)
 print("list messages", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
@@ -135,6 +142,15 @@ print("last hash", r.status_code, r.json() if r.headers.get("content-type","").s
 
 r = requests.get(base + f"/users/{user1}/conversations", timeout=5)
 print("list conversations", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+
+# mark delivered/read for user2
+if message_id:
+    r = requests.post(base + f"/messages/{message_id}/delivered", json={"user_id": user2}, timeout=5)
+    print("delivered", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+    r = requests.post(base + f"/messages/{message_id}/read", json={"user_id": user2}, timeout=5)
+    print("read", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+    r = requests.get(base + f"/messages/{message_id}/status", timeout=5)
+    print("status", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
 
 # rotate key for user1
 payload = {

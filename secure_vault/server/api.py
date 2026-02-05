@@ -28,6 +28,10 @@ class UserKeyIn(BaseModel):
     is_primary: Optional[bool] = False
 
 
+class StatusIn(BaseModel):
+    user_id: str
+
+
 class MessageIn(BaseModel):
     sender_id: str
     ciphertext: str
@@ -264,3 +268,46 @@ def get_last_hash(conversation_id: str):
         raise HTTPException(status_code=404, detail="Conversation not found")
     last_hash = db.get_last_message_hash(conversation_id)
     return {"content_hash": _bytes_to_b64(last_hash)}
+
+
+@app.post("/messages/{message_id}/delivered")
+def mark_delivered(message_id: str, data: StatusIn):
+    _require_uuid(message_id, "message_id")
+    _require_uuid(data.user_id, "user_id")
+    conversation_id = db.get_message_conversation_id(message_id)
+    if not conversation_id:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if not db.is_participant(conversation_id, data.user_id):
+        raise HTTPException(status_code=403, detail="User is not a participant")
+    db.mark_message_delivered(message_id, data.user_id)
+    return {"delivered": True}
+
+
+@app.post("/messages/{message_id}/read")
+def mark_read(message_id: str, data: StatusIn):
+    _require_uuid(message_id, "message_id")
+    _require_uuid(data.user_id, "user_id")
+    conversation_id = db.get_message_conversation_id(message_id)
+    if not conversation_id:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if not db.is_participant(conversation_id, data.user_id):
+        raise HTTPException(status_code=403, detail="User is not a participant")
+    db.mark_message_read(message_id, data.user_id)
+    return {"read": True}
+
+
+@app.get("/messages/{message_id}/status")
+def get_status(message_id: str):
+    _require_uuid(message_id, "message_id")
+    conversation_id = db.get_message_conversation_id(message_id)
+    if not conversation_id:
+        raise HTTPException(status_code=404, detail="Message not found")
+    statuses = db.get_message_status(message_id)
+    return [
+        {
+            "user_id": s["user_id"],
+            "delivered_at": s["delivered_at"],
+            "read_at": s["read_at"],
+        }
+        for s in statuses
+    ]

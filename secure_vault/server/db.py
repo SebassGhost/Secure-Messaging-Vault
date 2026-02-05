@@ -416,6 +416,20 @@ def message_exists(conversation_id: str, message_id: str) -> bool:
             return cur.fetchone() is not None
 
 
+def get_message_conversation_id(message_id: str) -> Optional[str]:
+    query = """
+        SELECT conversation_id
+        FROM messages
+        WHERE message_id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (message_id,))
+            row = cur.fetchone()
+            return row[0] if row else None
+
+
 def get_last_message_hash(conversation_id: str) -> Optional[bytes]:
     """
     Útil para encadenar prev_hash
@@ -434,3 +448,47 @@ def get_last_message_hash(conversation_id: str) -> Optional[bytes]:
             cur.execute(query, (conversation_id,))
             row = cur.fetchone()
             return row[0] if row else None
+
+
+def mark_message_delivered(message_id: str, user_id: str) -> bool:
+    query = """
+        INSERT INTO message_status (message_id, user_id, delivered_at)
+        VALUES (%s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (message_id, user_id)
+        DO UPDATE SET delivered_at = COALESCE(message_status.delivered_at, CURRENT_TIMESTAMP);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (message_id, user_id))
+            return True
+
+
+def mark_message_read(message_id: str, user_id: str) -> bool:
+    query = """
+        INSERT INTO message_status (message_id, user_id, delivered_at, read_at)
+        VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (message_id, user_id)
+        DO UPDATE SET
+            delivered_at = COALESCE(message_status.delivered_at, CURRENT_TIMESTAMP),
+            read_at = COALESCE(message_status.read_at, CURRENT_TIMESTAMP);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (message_id, user_id))
+            return True
+
+
+def get_message_status(message_id: str):
+    query = """
+        SELECT user_id, delivered_at, read_at
+        FROM message_status
+        WHERE message_id = %s
+        ORDER BY delivered_at ASC NULLS LAST;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (message_id,))
+            return cur.fetchall()

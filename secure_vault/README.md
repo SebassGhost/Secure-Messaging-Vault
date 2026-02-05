@@ -371,6 +371,52 @@ Respuesta:
 }
 ```
 
+### 11) Marcar mensaje como entregado
+
+**POST /messages/{message_id}/delivered**  
+Body:
+```json
+{
+  "user_id": "uuid"
+}
+```
+Respuesta:
+```json
+{
+  "delivered": true
+}
+```
+
+### 12) Marcar mensaje como leído
+
+**POST /messages/{message_id}/read**  
+Body:
+```json
+{
+  "user_id": "uuid"
+}
+```
+Respuesta:
+```json
+{
+  "read": true
+}
+```
+
+### 13) Obtener estado de un mensaje
+
+**GET /messages/{message_id}/status**  
+Respuesta:
+```json
+[
+  {
+    "user_id": "uuid",
+    "delivered_at": "2026-02-05T01:32:52.225837",
+    "read_at": "2026-02-05T01:33:10.100000"
+  }
+]
+```
+
 ## Guía de integración del cliente (E2EE)
 
 Esta guía describe **qué debe hacer el cliente** antes de enviar un mensaje.
