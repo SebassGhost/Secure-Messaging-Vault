@@ -1,17 +1,50 @@
-from fastapi import FastAPI, HTTPException
+import base64
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
-from server import storage
+from server import db
 
 app = FastAPI(title="Secure Messaging Vault")
 
 
 # ======== MODELOS ========
 
+class ParticipantIn(BaseModel):
+    user_id: str
+
+
+class UserIn(BaseModel):
+    public_key: str
+    fingerprint: str
+
+
 class MessageIn(BaseModel):
-    sender: str
-    recipient: str
-    content: str
+    sender_id: str
+    ciphertext: str
+    content_hash: str
+    prev_hash: Optional[str] = None
+    signature: str
+    client_timestamp: Optional[str] = None
+    key_id: Optional[str] = None
+
+
+# ======== HELPERS ========
+
+def _b64_to_bytes(value: Optional[str]) -> Optional[bytes]:
+    if value is None:
+        return None
+    try:
+        return base64.b64decode(value)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid base64 payload") from exc
+
+
+def _bytes_to_b64(value: Optional[bytes]) -> Optional[str]:
+    if value is None:
+        return None
+    return base64.b64encode(value).decode()
 
 
 # ======== RUTAS ========
@@ -24,44 +57,106 @@ def root():
     }
 
 
-@app.post("/messages")
-def create_message(data: MessageIn):
-    """
-    Crear un nuevo mensaje
-    """
-    return storage.store_message(
-        sender=data.sender,
-        recipient=data.recipient,
-        content=data.content
+@app.post("/users")
+def create_user(data: UserIn):
+    fingerprint_bytes = _b64_to_bytes(data.fingerprint)
+    user_id = db.create_user(data.public_key, fingerprint_bytes)
+    if not user_id:
+        raise HTTPException(status_code=500, detail="Failed to create or fetch user")
+    return {"user_id": user_id}
+
+
+@app.get("/users/{user_id}")
+def get_user(user_id: str):
+    user = db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "user_id": user["user_id"],
+        "public_key": user["public_key"],
+        "created_at": user["created_at"],
+    }
+
+
+@app.get("/users/by-fingerprint")
+def get_user_by_fingerprint(fingerprint: str = Query(...)):
+    user = db.get_user_by_fingerprint(_b64_to_bytes(fingerprint))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "user_id": user["user_id"],
+        "public_key": user["public_key"],
+        "created_at": user["created_at"],
+    }
+
+
+@app.post("/conversations")
+def create_conversation():
+    conversation_id = db.create_conversation()
+    return {"conversation_id": conversation_id}
+
+
+@app.post("/conversations/{conversation_id}/participants")
+def add_participant(conversation_id: str, data: ParticipantIn):
+    db.add_participant(conversation_id, data.user_id)
+    return {"added": True}
+
+
+@app.get("/users/{user_id}/conversations")
+def list_conversations(user_id: str):
+    return db.list_conversations_for_user(user_id)
+
+
+@app.post("/conversations/{conversation_id}/messages")
+def create_message(conversation_id: str, data: MessageIn):
+    if not db.is_participant(conversation_id, data.sender_id):
+        raise HTTPException(status_code=403, detail="Sender is not a participant")
+
+    message_id, created_at = db.insert_message(
+        conversation_id=conversation_id,
+        sender_id=data.sender_id,
+        ciphertext=_b64_to_bytes(data.ciphertext),
+        content_hash=_b64_to_bytes(data.content_hash),
+        prev_hash=_b64_to_bytes(data.prev_hash),
+        signature=_b64_to_bytes(data.signature),
+        client_timestamp=data.client_timestamp,
+        key_id=data.key_id,
     )
 
-
-@app.get("/messages/{message_id}")
-def get_message(message_id: str):
-    """
-    Obtener un mensaje por ID
-    """
-    message = storage.get_message(message_id)
-    if not message:
-        raise HTTPException(status_code=404, detail="Message not found")
-    return message
+    return {
+        "message_id": message_id,
+        "created_at": created_at,
+    }
 
 
-@app.get("/messages")
-def list_messages(recipient: str | None = None):
-    """
-    Listar todos los mensajes
-    (opcional: filtrar por recipient)
-    """
-    return storage.list_messages(recipient)
+@app.get("/conversations/{conversation_id}/messages")
+def list_messages(
+    conversation_id: str,
+    after: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+):
+    rows = db.get_messages(
+        conversation_id=conversation_id,
+        after_message_id=after,
+        limit=limit,
+    )
+    return [
+        {
+            "message_id": r["message_id"],
+            "sender_id": r["sender_id"],
+            "ciphertext": _bytes_to_b64(r["ciphertext"]),
+            "content_hash": _bytes_to_b64(r["content_hash"]),
+            "prev_hash": _bytes_to_b64(r["prev_hash"]),
+            "signature": _bytes_to_b64(r["signature"]),
+            "client_timestamp": r["client_timestamp"],
+            "key_id": r["key_id"],
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
 
 
-@app.delete("/messages/{message_id}")
-def delete_message(message_id: str):
-    """
-    Eliminar un mensaje
-    """
-    deleted = storage.delete_message(message_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Message not found")
-    return {"deleted": True}
+@app.get("/conversations/{conversation_id}/messages/last-hash")
+def get_last_hash(conversation_id: str):
+    last_hash = db.get_last_message_hash(conversation_id)
+    return {"content_hash": _bytes_to_b64(last_hash)}

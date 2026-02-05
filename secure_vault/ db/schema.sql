@@ -26,7 +26,7 @@ CREATE TABLE users (
     -- Public key in PEM or Base64
     public_key TEXT NOT NULL,
 
-    -- Fingerprint = hash(public_key)
+    -- Fingerprint = SHA-256(public_key)
     fingerprint BYTEA NOT NULL UNIQUE,
 
     created_at TIMESTAMP NOT NULL
@@ -81,6 +81,8 @@ CREATE TABLE conversation_participants (
 -- Append-only, immutable, end-to-end encrypted
 -- ============================================================
 
+-- NOTE: Backend must validate that sender_id belongs to the conversation
+-- (sender_id ∈ conversation_participants for conversation_id).
 CREATE TABLE messages (
 
     message_id UUID PRIMARY KEY
@@ -103,6 +105,13 @@ CREATE TABLE messages (
 
     -- Signature of content_hash using sender private key
     signature BYTEA NOT NULL,
+
+    -- Client-side timestamp (non-trusted, UX only)
+    client_timestamp TIMESTAMP,
+
+    -- Optional key identifier (for key rotation)
+    -- NULL = primary/default key
+    key_id TEXT,
 
     created_at TIMESTAMP NOT NULL
         DEFAULT CURRENT_TIMESTAMP,
@@ -138,6 +147,10 @@ CREATE INDEX idx_messages_sender
 -- Chain integrity / fast verification
 CREATE INDEX idx_messages_chain
     ON messages(conversation_id, prev_hash);
+
+-- Fast lookup: conversations by user
+CREATE INDEX idx_cp_user
+    ON conversation_participants(user_id);
 
 
 -- ============================================================
