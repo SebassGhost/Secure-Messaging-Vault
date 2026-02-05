@@ -58,7 +58,7 @@ def _b64_to_bytes(value: Optional[str]) -> Optional[bytes]:
     if value is None:
         return None
     try:
-        return base64.b64decode(value)
+        return base64.b64decode(value, validate=True)
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid base64 payload") from exc
 

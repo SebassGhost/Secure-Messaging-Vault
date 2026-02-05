@@ -620,6 +620,14 @@ chmod +x scripts/verify.sh
 - **`Did not find any relations`:** el esquema no se aplicó; repite el paso 2.
 - **Errores 403 al enviar mensaje:** el `sender_id` no es participante de la conversación.
 
+## Pruebas (pytest)
+
+Pruebas unitarias básicas del API con `TestClient`:
+
+```bash
+pytest -q
+```
+
 ## Funciones futuras (roadmap)
 
 Estas son mejoras planeadas y coherentes con el diseño E2EE:
