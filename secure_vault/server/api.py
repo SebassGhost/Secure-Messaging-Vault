@@ -32,6 +32,16 @@ class StatusIn(BaseModel):
     user_id: str
 
 
+class AttachmentIn(BaseModel):
+    uploader_id: str
+    ciphertext: str
+    content_hash: str
+    signature: str
+    meta_ciphertext: Optional[str] = None
+    meta_hash: Optional[str] = None
+    meta_signature: Optional[str] = None
+
+
 class MessageIn(BaseModel):
     sender_id: str
     ciphertext: str
@@ -311,3 +321,77 @@ def get_status(message_id: str):
         }
         for s in statuses
     ]
+
+
+@app.post("/messages/{message_id}/attachments")
+def add_attachment(message_id: str, data: AttachmentIn):
+    _require_uuid(message_id, "message_id")
+    _require_uuid(data.uploader_id, "uploader_id")
+    conversation_id = db.get_message_conversation_id(message_id)
+    if not conversation_id:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if not db.is_participant(conversation_id, data.uploader_id):
+        raise HTTPException(status_code=403, detail="Uploader is not a participant")
+
+    attachment_id, created_at = db.insert_attachment(
+        message_id=message_id,
+        uploader_id=data.uploader_id,
+        ciphertext=_b64_to_bytes(data.ciphertext),
+        content_hash=_b64_to_bytes(data.content_hash),
+        signature=_b64_to_bytes(data.signature),
+        meta_ciphertext=_b64_to_bytes(data.meta_ciphertext),
+        meta_hash=_b64_to_bytes(data.meta_hash),
+        meta_signature=_b64_to_bytes(data.meta_signature),
+    )
+    return {"attachment_id": attachment_id, "created_at": created_at}
+
+
+@app.get("/messages/{message_id}/attachments")
+def list_attachments(message_id: str, user_id: str = Query(...)):
+    _require_uuid(message_id, "message_id")
+    _require_uuid(user_id, "user_id")
+    conversation_id = db.get_message_conversation_id(message_id)
+    if not conversation_id:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if not db.is_participant(conversation_id, user_id):
+        raise HTTPException(status_code=403, detail="User is not a participant")
+
+    rows = db.list_attachments(message_id)
+    return [
+        {
+            "attachment_id": r["attachment_id"],
+            "uploader_id": r["uploader_id"],
+            "meta_ciphertext": _bytes_to_b64(r["meta_ciphertext"]),
+            "meta_hash": _bytes_to_b64(r["meta_hash"]),
+            "meta_signature": _bytes_to_b64(r["meta_signature"]),
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
+
+
+@app.get("/attachments/{attachment_id}")
+def get_attachment(attachment_id: str, user_id: str = Query(...)):
+    _require_uuid(attachment_id, "attachment_id")
+    _require_uuid(user_id, "user_id")
+    attachment = db.get_attachment(attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    conversation_id = db.get_message_conversation_id(attachment["message_id"])
+    if not conversation_id:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if not db.is_participant(conversation_id, user_id):
+        raise HTTPException(status_code=403, detail="User is not a participant")
+
+    return {
+        "attachment_id": attachment["attachment_id"],
+        "message_id": attachment["message_id"],
+        "uploader_id": attachment["uploader_id"],
+        "ciphertext": _bytes_to_b64(attachment["ciphertext"]),
+        "content_hash": _bytes_to_b64(attachment["content_hash"]),
+        "signature": _bytes_to_b64(attachment["signature"]),
+        "meta_ciphertext": _bytes_to_b64(attachment["meta_ciphertext"]),
+        "meta_hash": _bytes_to_b64(attachment["meta_hash"]),
+        "meta_signature": _bytes_to_b64(attachment["meta_signature"]),
+        "created_at": attachment["created_at"],
+    }

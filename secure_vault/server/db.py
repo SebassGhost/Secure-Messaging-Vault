@@ -492,3 +492,76 @@ def get_message_status(message_id: str):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, (message_id,))
             return cur.fetchall()
+
+
+def insert_attachment(
+    message_id: str,
+    uploader_id: str,
+    ciphertext: bytes,
+    content_hash: bytes,
+    signature: bytes,
+    meta_ciphertext: Optional[bytes] = None,
+    meta_hash: Optional[bytes] = None,
+    meta_signature: Optional[bytes] = None,
+):
+    query = """
+        INSERT INTO attachments (
+            message_id,
+            uploader_id,
+            ciphertext,
+            content_hash,
+            signature,
+            meta_ciphertext,
+            meta_hash,
+            meta_signature
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING attachment_id, created_at;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    message_id,
+                    uploader_id,
+                    psycopg2.Binary(ciphertext),
+                    psycopg2.Binary(content_hash),
+                    psycopg2.Binary(signature),
+                    psycopg2.Binary(meta_ciphertext) if meta_ciphertext else None,
+                    psycopg2.Binary(meta_hash) if meta_hash else None,
+                    psycopg2.Binary(meta_signature) if meta_signature else None,
+                )
+            )
+            return cur.fetchone()
+
+
+def list_attachments(message_id: str):
+    query = """
+        SELECT attachment_id, uploader_id, meta_ciphertext, meta_hash, meta_signature, created_at
+        FROM attachments
+        WHERE message_id = %s
+        ORDER BY created_at ASC;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (message_id,))
+            return cur.fetchall()
+
+
+def get_attachment(attachment_id: str):
+    query = """
+        SELECT attachment_id, message_id, uploader_id,
+               ciphertext, content_hash, signature,
+               meta_ciphertext, meta_hash, meta_signature,
+               created_at
+        FROM attachments
+        WHERE attachment_id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (attachment_id,))
+            return cur.fetchone()

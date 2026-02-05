@@ -32,11 +32,17 @@ Write-Host "Checking schema state..."
 $schemaExists = docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.users') IS NOT NULL;"
 $keysExists = docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.user_keys') IS NOT NULL;"
 $statusExists = docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.message_status') IS NOT NULL;"
+$attachmentsExists = docker compose exec -T db psql -U vault -d secure_vault -tAc "SELECT to_regclass('public.attachments') IS NOT NULL;"
 
 if ($schemaExists -match "t") {
     if ($keysExists -match "t") {
         if ($statusExists -match "t") {
-            Write-Host "Schema already exists. Skipping schema apply."
+            if ($attachmentsExists -match "t") {
+                Write-Host "Schema already exists. Skipping schema apply."
+            } else {
+                Write-Host "Applying attachments migration..."
+                type "scripts\migrate_attachments_table.sql" | docker compose exec -T db psql -U vault -d secure_vault | Out-Null
+            }
         } else {
             Write-Host "Applying message_status migration..."
             type "scripts\migrate_message_status_table.sql" | docker compose exec -T db psql -U vault -d secure_vault | Out-Null
@@ -150,6 +156,27 @@ if message_id:
     print("read", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
     r = requests.get(base + f"/messages/{message_id}/status", timeout=5)
     print("status", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+
+    # add attachment
+    payload = {
+        "uploader_id": user1,
+        "ciphertext": "YXR0YWNobWVudC1iaW5hcnk=",
+        "content_hash": "YXR0YWNobWVudC1oYXNo",
+        "signature": "YXR0YWNobWVudC1zaWc=",
+        "meta_ciphertext": "bWV0YS1lbmM=",
+        "meta_hash": "bWV0YS1oYXNo",
+        "meta_signature": "bWV0YS1zaWc=",
+    }
+    r = requests.post(base + f"/messages/{message_id}/attachments", json=payload, timeout=5)
+    print("add attachment", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+    attachment_id = r.json().get("attachment_id") if r.headers.get("content-type","").startswith("application/json") else None
+
+    r = requests.get(base + f"/messages/{message_id}/attachments", params={"user_id": user2}, timeout=5)
+    print("list attachments", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
+
+    if attachment_id:
+        r = requests.get(base + f"/attachments/{attachment_id}", params={"user_id": user2}, timeout=5)
+        print("get attachment", r.status_code, r.json() if r.headers.get("content-type","").startswith("application/json") else r.text)
 
 # rotate key for user1
 payload = {

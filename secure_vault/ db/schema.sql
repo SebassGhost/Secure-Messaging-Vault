@@ -200,6 +200,54 @@ CREATE INDEX idx_ms_message
 CREATE INDEX idx_ms_user
     ON message_status(user_id);
 
+-- ============================================================
+-- ATTACHMENTS (E2EE)
+-- ============================================================
+
+CREATE TABLE attachments (
+
+    attachment_id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    message_id UUID NOT NULL,
+
+    uploader_id UUID NOT NULL,
+
+    -- Encrypted attachment bytes (E2EE)
+    ciphertext BYTEA NOT NULL,
+
+    -- Hash calculated client-side over:
+    -- ciphertext + uploader_id + message_id
+    content_hash BYTEA NOT NULL,
+
+    -- Signature of content_hash using uploader private key
+    signature BYTEA NOT NULL,
+
+    -- Optional encrypted metadata (filename, mime, size)
+    meta_ciphertext BYTEA,
+    meta_hash BYTEA,
+    meta_signature BYTEA,
+
+    created_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_attachment_message
+        FOREIGN KEY (message_id)
+        REFERENCES messages(message_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_attachment_uploader
+        FOREIGN KEY (uploader_id)
+        REFERENCES users(user_id)
+        ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_attachments_message
+    ON attachments(message_id);
+
+CREATE INDEX idx_attachments_uploader
+    ON attachments(uploader_id);
+
 
 -- ============================================================
 -- INDEXES

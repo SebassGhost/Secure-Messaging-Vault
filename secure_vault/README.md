@@ -417,6 +417,65 @@ Respuesta:
 ]
 ```
 
+### 14) Subir adjunto cifrado
+
+**POST /messages/{message_id}/attachments**  
+Body:
+```json
+{
+  "uploader_id": "uuid",
+  "ciphertext": "base64",
+  "content_hash": "base64",
+  "signature": "base64",
+  "meta_ciphertext": "base64|null",
+  "meta_hash": "base64|null",
+  "meta_signature": "base64|null"
+}
+```
+Respuesta:
+```json
+{
+  "attachment_id": "uuid",
+  "created_at": "2026-02-05T16:46:17.211498"
+}
+```
+
+### 15) Listar adjuntos de un mensaje
+
+**GET /messages/{message_id}/attachments?user_id={user_id}**  
+Respuesta:
+```json
+[
+  {
+    "attachment_id": "uuid",
+    "uploader_id": "uuid",
+    "meta_ciphertext": "base64|null",
+    "meta_hash": "base64|null",
+    "meta_signature": "base64|null",
+    "created_at": "2026-02-05T16:46:17.211498"
+  }
+]
+```
+
+### 16) Obtener adjunto
+
+**GET /attachments/{attachment_id}?user_id={user_id}**  
+Respuesta:
+```json
+{
+  "attachment_id": "uuid",
+  "message_id": "uuid",
+  "uploader_id": "uuid",
+  "ciphertext": "base64",
+  "content_hash": "base64",
+  "signature": "base64",
+  "meta_ciphertext": "base64|null",
+  "meta_hash": "base64|null",
+  "meta_signature": "base64|null",
+  "created_at": "2026-02-05T16:46:17.211498"
+}
+```
+
 ## Guía de integración del cliente (E2EE)
 
 Esta guía describe **qué debe hacer el cliente** antes de enviar un mensaje.
